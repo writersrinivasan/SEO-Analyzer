@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEO Analysis App - Standalone Demo</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useCallback } = React;
+
+        // Utility functions
+        const validateUrl = (url) => {
+            if (!url.trim()) {
+                return { isValid: false, error: 'URL is required' };
+            }
+
+            try {
+                const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+                
+                if (!['http:', 'https:'].includes(urlObj.protocol)) {
+                    return { isValid: false, error: 'URL must use HTTP or HTTPS protocol' };
+                }
+                
+                if (!urlObj.hostname || urlObj.hostname.length < 3) {
+                    return { isValid: false, error: 'Invalid domain name' };
+                }
+                
+                return { isValid: true };
+            } catch {
+                return { isValid: false, error: 'Invalid URL format' };
+            }
+        };
+
+        const normalizeUrl = (url) => {
+            if (!url.startsWith('http')) {
+                return `https://${url}`;
+            }
+            return url;
+        };
+
+        const getScoreColor = (score) => {
+            if (score >= 80) return 'text-green-600';
+            if (score >= 60) return 'text-yellow-600';
+            return 'text-red-600';
+        };
+
+        const getScoreBgColor = (score) => {
+            if (score >= 80) return 'bg-green-50';
+            if (score >= 60) return 'bg-yellow-50';
+            return 'bg-red-50';
+        };
+
+        const formatDate = (timestamp) => {
+            return new Date(timestamp).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        };
+
+        // Mock data
+        const MOCK_RESPONSES = {
+            'blog.example.com': {
+                url: 'https://blog.example.com/web-performance-optimization',
+                timestamp: new Date().toISOString(),
+                metadata: {
+                    title: 'Web Performance Optimization: A Complete Guide',
+                    description: 'Learn essential techniques to optimize your website performance, improve loading times, and enhance user experience with our comprehensive guide.',
+                    titleLength: 45,
+                    descriptionLength: 149,
+                },
+                headings: {
+                    h1Count: 1,
+                    h1Text: ['Web Performance Optimization: A Complete Guide'],
+                    h2Count: 6,
+                    h3Count: 12,
+                },
+                content: {
+                    wordCount: 2150,
+                    readingTime: 11,
+                    imageCount: 8,
+                    altTextMissing: 0,
+                },
+                keywords: [
+                    { keyword: 'performance', frequency: 23, density: 1.07 },
+                    { keyword: 'optimization', frequency: 18, density: 0.84 },
+                    { keyword: 'loading', frequency: 15, density: 0.70 },
+                    { keyword: 'website', frequency: 12, density: 0.56 },
+                    { keyword: 'speed', frequency: 10, density: 0.47 },
+                ],
+                pageSpeed: {
+                    score: 92,
+                    metrics: { fcp: 1.2, lcp: 2.1, cls: 0.05, ttfb: 0.8 },
+                },
+                suggestions: [
+                    {
+                        type: 'info',
+                        message: 'Consider adding structured data markup for better search visibility',
+                        impact: 'medium',
+                    },
+                    {
+                        type: 'info',
+                        message: 'Add internal links to related articles to improve site navigation',
+                        impact: 'low',
+                    },
+                ],
+                score: 94,
+            },
+            'shop.example.com': {
+                url: 'https://shop.example.com/products/wireless-headphones',
+                timestamp: new Date().toISOString(),
+                metadata: {
+                    title: 'Wireless Headphones',
+                    description: 'Buy wireless headphones',
+                    titleLength: 18,
+                    descriptionLength: 25,
+                },
+                headings: {
+                    h1Count: 2,
+                    h1Text: ['Wireless Headphones', 'Product Details'],
+                    h2Count: 3,
+                    h3Count: 1,
+                },
+                content: {
+                    wordCount: 180,
+                    readingTime: 1,
+                    imageCount: 5,
+                    altTextMissing: 3,
+                },
+                keywords: [
+                    { keyword: 'headphones', frequency: 8, density: 4.44 },
+                    { keyword: 'wireless', frequency: 6, density: 3.33 },
+                    { keyword: 'bluetooth', frequency: 4, density: 2.22 },
+                    { keyword: 'audio', frequency: 3, density: 1.67 },
+                    { keyword: 'music', frequency: 2, density: 1.11 },
+                ],
+                pageSpeed: {
+                    score: 67,
+                    metrics: { fcp: 2.8, lcp: 4.2, cls: 0.15, ttfb: 1.9 },
+                },
+                suggestions: [
+                    {
+                        type: 'critical',
+                        message: 'Title tag is too short and not descriptive. Include brand, model, and key features.',
+                        impact: 'high',
+                    },
+                    {
+                        type: 'critical',
+                        message: 'Meta description is too short and generic. Write compelling copy with product benefits.',
+                        impact: 'high',
+                    },
+                    {
+                        type: 'warning',
+                        message: 'Multiple H1 tags found. Use only one H1 per page for better SEO.',
+                        impact: 'medium',
+                    },
+                    {
+                        type: 'warning',
+                        message: '3 images are missing alt text. Add descriptive alt attributes for accessibility.',
+                        impact: 'medium',
+                    },
+                ],
+                score: 52,
+            },
+            'app.example.com': {
+                url: 'https://app.example.com/dashboard',
+                timestamp: new Date().toISOString(),
+                metadata: {
+                    title: 'Dashboard',
+                    description: '',
+                    titleLength: 9,
+                    descriptionLength: 0,
+                },
+                headings: {
+                    h1Count: 0,
+                    h1Text: [],
+                    h2Count: 4,
+                    h3Count: 8,
+                },
+                content: {
+                    wordCount: 45,
+                    readingTime: 1,
+                    imageCount: 12,
+                    altTextMissing: 12,
+                },
+                keywords: [
+                    { keyword: 'dashboard', frequency: 3, density: 6.67 },
+                    { keyword: 'loading', frequency: 2, density: 4.44 },
+                    { keyword: 'data', frequency: 2, density: 4.44 },
+                ],
+                pageSpeed: {
+                    score: 34,
+                    metrics: { fcp: 4.1, lcp: 6.8, cls: 0.28, ttfb: 2.2 },
+                },
+                suggestions: [
+                    {
+                        type: 'critical',
+                        message: 'Missing meta description. Add a compelling description for search results.',
+                        impact: 'high',
+                    },
+                    {
+                        type: 'critical',
+                        message: 'Title tag is too generic. Include specific page purpose and brand name.',
+                        impact: 'high',
+                    },
+                    {
+                        type: 'critical',
+                        message: 'No H1 tag found. Add a descriptive H1 heading for page hierarchy.',
+                        impact: 'high',
+                    },
+                ],
+                score: 28,
+            },
+        };
+
+        // Main App Component
+        function SeoAnalysisApp() {
+            const [url, setUrl] = useState('');
+            const [loadingState, setLoadingState] = useState('idle');
+            const [analysisResult, setAnalysisResult] = useState(null);
+            const [error, setError] = useState(null);
+            const [showTooltip, setShowTooltip] = useState(false);
+
+            const analyzeUrl = useCallback(async (targetUrl) => {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                const domain = new URL(targetUrl).hostname;
+                
+                if (domain in MOCK_RESPONSES) {
+                    return { ...MOCK_RESPONSES[domain], url: targetUrl };
+                }
+                
+                return {
+                    ...MOCK_RESPONSES['blog.example.com'],
+                    url: targetUrl,
+                    score: Math.floor(Math.random() * 40) + 60,
+                };
+            }, []);
+
+            const handleAnalyzeUrl = useCallback(async (e) => {
+                e.preventDefault();
+                
+                setError(null);
+                setAnalysisResult(null);
+                
+                const validation = validateUrl(url);
+                if (!validation.isValid) {
+                    setError(validation.error || 'Invalid URL');
+                    return;
+                }
+                
+                const normalizedUrl = normalizeUrl(url);
+                setLoadingState('loading');
+                
+                try {
+                    const result = await analyzeUrl(normalizedUrl);
+                    setAnalysisResult(result);
+                    setLoadingState('success');
+                } catch (err) {
+                    setError('Failed to analyze URL. Please try again.');
+                    setLoadingState('error');
+                }
+            }, [url, analyzeUrl]);
+
+            const handleNewAnalysis = useCallback(() => {
+                setUrl('');
+                setAnalysisResult(null);
+                setError(null);
+                setLoadingState('idle');
+            }, []);
+
+            if (loadingState === 'error' && error) {
+                return (
+                    <div className="min-h-screen bg-gray-50 py-8 px-4">
+                        <div className="max-w-2xl mx-auto">
+                            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                                <div className="text-center">
+                                    <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-50 mb-4">
+                                        <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.684-.833-2.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                        </svg>
+                                    </div>
+                                    <h3 className="text-lg font-medium text-gray-900 mb-2">Analysis Failed</h3>
+                                    <p className="text-red-600 mb-4">{error}</p>
+                                    <button
+                                        onClick={handleNewAnalysis}
+                                        className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200"
+                                    >
+                                        Try Again
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (loadingState === 'success' && analysisResult) {
+                const { metadata, headings, content, keywords, pageSpeed, suggestions, score } = analysisResult;
+
+                return (
+                    <div className="min-h-screen bg-gray-50 py-8 px-4">
+                        <div className="max-w-4xl mx-auto space-y-6">
+                            {/* Header */}
+                            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-gray-900 mb-1">SEO Analysis Results</h2>
+                                        <p className="text-gray-600 break-all">{analysisResult.url}</p>
+                                        <p className="text-sm text-gray-500">{formatDate(analysisResult.timestamp)}</p>
+                                    </div>
+                                    <div className="text-center">
+                                        <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full ${getScoreBgColor(score)} mb-2`}>
+                                            <span className={`text-2xl font-bold ${getScoreColor(score)}`}>{score}</span>
+                                        </div>
+                                        <p className="text-sm text-gray-600">SEO Score</p>
+                                    </div>
+                                </div>
+                                
+                                <button
+                                    onClick={handleNewAnalysis}
+                                    className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors duration-200"
+                                >
+                                    Analyze Another URL
+                                </button>
+                            </div>
+
+                            {/* Metadata */}
+                            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                                <h3 className="text-lg font-semibold text-gray-900 mb-4">Page Metadata</h3>
+                                <div className="space-y-4">
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="text-sm font-medium text-gray-700">Title Tag</label>
+                                            <span className={`text-xs px-2 py-1 rounded ${
+                                                metadata.titleLength >= 30 && metadata.titleLength <= 60 ? 'text-green-600 bg-green-50' : 'text-yellow-600 bg-yellow-50'
+                                            }`}>
+                                                {metadata.titleLength} chars
+                                            </span>
+                                        </div>
+                                        <p className="text-gray-900 bg-gray-50 p-3 rounded border">
+                                            {metadata.title || 'No title found'}
+                                        </p>
+                                    </div>
+                                    
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="text-sm font-medium text-gray-700">Meta Description</label>
+                                            <span className={`text-xs px-2 py-1 rounded ${
+                                                metadata.descriptionLength >= 120 && metadata.descriptionLength <= 160 ? 'text-green-600 bg-green-50' : 
+                                                metadata.descriptionLength === 0 ? 'text-red-600 bg-red-50' : 'text-yellow-600 bg-yellow-50'
+                                            }`}>
+                                                {metadata.descriptionLength} chars
+                                            </span>
+                                        </div>
+                                        <p className="text-gray-900 bg-gray-50 p-3 rounded border">
+                                            {metadata.description || 'No meta description found'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Content & Speed */}
+                            <div className="grid md:grid-cols-2 gap-6">
+                                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Content Structure</h3>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-600">H1 Tags:</span>
+                                            <span className={`font-medium ${headings.h1Count === 1 ? 'text-green-600' : 'text-yellow-600'}`}>
+                                                {headings.h1Count}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-600">H2 Tags:</span>
+                                            <span className="font-medium text-gray-900">{headings.h2Count}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-600">Word Count:</span>
+                                            <span className={`font-medium ${content.wordCount >= 300 ? 'text-green-600' : 'text-yellow-600'}`}>
+                                                {content.wordCount.toLocaleString()}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-600">Reading Time:</span>
+                                            <span className="font-medium text-gray-900">{content.readingTime} min</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Page Speed</h3>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-600">Overall Score:</span>
+                                            <span className={`font-bold ${getScoreColor(pageSpeed.score)}`}>
+                                                {pageSpeed.score}/100
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-600">First Contentful Paint:</span>
+                                            <span className="font-medium text-gray-900">{pageSpeed.metrics.fcp}s</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-gray-600">Largest Contentful Paint:</span>
+                                            <span className="font-medium text-gray-900">{pageSpeed.metrics.lcp}s</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Keywords */}
+                            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                                <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Keywords</h3>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {keywords.slice(0, 6).map((keyword, index) => (
+                                        <div key={index} className="bg-gray-50 p-3 rounded border">
+                                            <div className="font-medium text-gray-900">{keyword.keyword}</div>
+                                            <div className="text-sm text-gray-600">
+                                                {keyword.frequency} times ({keyword.density}% density)
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Suggestions */}
+                            {suggestions.length > 0 && (
+                                <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Improvement Suggestions</h3>
+                                    <div className="space-y-3">
+                                        {suggestions.map((suggestion, index) => (
+                                            <div key={index} className={`p-4 rounded-lg border-l-4 ${
+                                                suggestion.type === 'critical' ? 'bg-red-50 border-red-500' :
+                                                suggestion.type === 'warning' ? 'bg-yellow-50 border-yellow-500' :
+                                                'bg-blue-50 border-blue-500'
+                                            }`}>
+                                                <p className="text-sm text-gray-900">{suggestion.message}</p>
+                                                <p className="text-xs text-gray-600 mt-1">
+                                                    Impact: <span className="capitalize font-medium">{suggestion.impact}</span>
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            // URL Input Form
+            return (
+                <div className="min-h-screen bg-gray-50 py-8 px-4">
+                    <div className="max-w-2xl mx-auto">
+                        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                            <div className="text-center mb-6">
+                                <h1 className="text-3xl font-bold text-gray-900 mb-2">SEO Analyzer</h1>
+                                <p className="text-gray-600">
+                                    Analyze your website's SEO performance and get actionable insights
+                                </p>
+                            </div>
+                            
+                            <form onSubmit={handleAnalyzeUrl} className="space-y-4">
+                                <div>
+                                    <label htmlFor="url-input" className="block text-sm font-medium text-gray-700 mb-2">
+                                        Website URL
+                                    </label>
+                                    <input
+                                        id="url-input"
+                                        type="text"
+                                        value={url}
+                                        onChange={(e) => setUrl(e.target.value)}
+                                        placeholder="Enter your website URL (e.g., blog.example.com)"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                                        disabled={loadingState === 'loading'}
+                                    />
+                                    <p className="mt-1 text-sm text-gray-500">
+                                        Try: blog.example.com, shop.example.com, or app.example.com for demo
+                                    </p>
+                                </div>
+                                
+                                <button
+                                    type="submit"
+                                    disabled={loadingState === 'loading' || !url.trim()}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors duration-200 w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {loadingState === 'loading' ? 'Analyzing...' : 'Analyze SEO'}
+                                </button>
+                                
+                                {loadingState === 'loading' && (
+                                    <div className="text-center">
+                                        <div className="inline-flex items-center space-x-2">
+                                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                                            <span className="text-sm text-gray-600">Analyzing website structure and content...</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Render the app
+        ReactDOM.render(<SeoAnalysisApp />, document.getElementById('root'));
+    </script>
+</body>
+</html>
